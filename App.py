@@ -24,15 +24,27 @@ if st.button("Scan", type="primary") and wallets:
                 if not (addr.startswith("0x") and len(addr) == 42):
                     profiles[addr] = {"error": "Invalid wallet address"}
                     continue
+                
+                # Portfolio
                 p_url = f"https://api.zerion.io/v1/wallets/{addr}/portfolio?currency=usd"
                 p_r = requests.get(p_url, headers=headers, timeout=10).json()
-                if "data" not in p_r:
-                    profiles[addr] = {"error": "No data (inactive wallet?)"}
+                
+                # Debug: Log response status (visible in Streamlit logs)
+                st.session_state.debug = f"Portfolio status for {addr}: {len(p_r.get('data', []))} positions"
+                
+                if "data" not in p_r or not p_r["data"]["relationships"]["positions"]["data"]:
+                    profiles[addr] = {"error": "No portfolio data (empty/inactive wallet? Try Vitalik's address)"}
                     continue
                 v = p_r["data"]["attributes"].get("total_value", 0)
                 a = [pos["id"] for pos in p_r["data"]["relationships"]["positions"]["data"]]
+                
+                # Txs
                 t_url = f"https://api.zerion.io/v1/wallets/{addr}/transactions?limit=100"
                 t_r = requests.get(t_url, headers=headers, timeout=10).json()
+                
+                # Debug: Log tx status
+                st.session_state.debug += f" | Txs: {len(t_r.get('data', []))}"
+                
                 t = len(t_r.get("data", []))
                 score = t * 10 + v / 100 + len(a) * 5
                 profiles[addr] = {"value_usd": round(v, 2), "tx_count": t, "assets": len(a), "score": round(score, 2), "top": a[:3]}
@@ -42,6 +54,11 @@ if st.button("Scan", type="primary") and wallets:
         result = {"profiles": profiles, "summary": f"Scanned {len(wallets)} wallets"}
 
     st.success("Done!")
+    
+    # Show debug log
+    if 'debug' in st.session_state:
+        st.info(st.session_state.debug)
+    
     for w, p in result["profiles"].items():
         if "error" in p:
             st.error(f"{w[:10]}...: {p['error']}")
